@@ -1,0 +1,31 @@
+{
+  "shot05": {
+    "id": "Shot05",
+    "durationInFrames": 240,
+    "words": ["THE", "ISLAND", "THAT", "NEVER", "EXISTED"],
+    "subtitle": "CORAL SEA • 1876 – 2012"
+  },
+  "shot47": {
+    "id": "Shot47",
+    "durationInFrames": 300,
+    "words": ["BLANK", "SPOT", "MAP"],
+    "subtitle": "SUBSCRIBE FOR THE NEXT PLACE THE WORLD GOT WRONG"
+  },
+  "shot29": {
+    "id": "Shot29",
+    "durationInFrames": 270,
+    "targetDepth": 1400,
+    "coordinates": "19°15' S, 159°55' E"
+  },
+  "shot30": {
+    "id": "Shot30",
+    "durationInFrames": 240,
+    "coordinates": "19°15' S, 159°55' E",
+    "label": "RV SOUTHERN SURVEYOR • SONAR LOG"
+  },
+  "shot40": {
+    "id": "Shot40",
+    "durationInFrames": 210,
+    "stampText": "UN-DISCOVERED"
+  }
+}
