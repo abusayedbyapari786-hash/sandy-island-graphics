@@ -1,13 +1,4 @@
 import { Easing } from 'remotion';
-import { loadFont as loadBebas } from '@remotion/google-fonts/BebasNeue';
-import { loadFont as loadCormorant } from '@remotion/google-fonts/CormorantGaramond';
-import { loadFont as loadMontserrat } from '@remotion/google-fonts/Montserrat';
-import { loadFont as loadMono } from '@remotion/google-fonts/IBMPlexMono';
-
-const { fontFamily: bebas } = loadBebas();
-const { fontFamily: cormorant } = loadCormorant();
-const { fontFamily: montserrat } = loadMontserrat();
-const { fontFamily: mono } = loadMono();
 
 export const COLORS = {
   navy: '#0A1628',
@@ -16,14 +7,14 @@ export const COLORS = {
   parchment: '#E8DCC0',
   stampRed: '#B3261E',
   textWhite: '#F5F1E6',
-  darkBacking: 'rgba(10, 22, 40, 0.72)',
+  darkBacking: 'rgba(10, 22, 40, 0.78)',
 };
 
 export const FONTS = {
-  title: bebas,
-  history: cormorant,
-  ui: montserrat,
-  mono: mono,
+  title: 'Impact, "Arial Black", "Liberation Sans", sans-serif',
+  history: 'Georgia, "Liberation Serif", "Times New Roman", serif',
+  ui: '"Liberation Sans", Arial, Helvetica, sans-serif',
+  mono: '"Liberation Mono", "DejaVu Sans Mono", monospace',
 };
 
 export const SAFE_AREA = {
