@@ -1,296 +1,406 @@
 import os
-import math
+import json
+import time
 import subprocess
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from playwright.sync_api import sync_playwright
 
 W, H, FPS = 1920, 1080, 60
 os.makedirs("output_clips", exist_ok=True)
 
-FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-FONT_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=JetBrains+Mono:wght@700;800&family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: #040914;
+    font-family: 'Montserrat', sans-serif;
+    perspective: 1400px;
+  }
+  /* Deep Ocean + Vintage Nautical SVG Map Background */
+  .world-stage {
+    position: absolute; inset: -120px;
+    background: radial-gradient(circle at 50% 45%, #0d2438 0%, #050d1a 65%, #02050a 100%);
+    transform-style: preserve-3d;
+  }
+  .nautical-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(212, 175, 55, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212, 175, 55, 0.08) 1px, transparent 1px),
+      radial-gradient(circle at 50% 50%, transparent 280px, rgba(56, 189, 248, 0.12) 282px, transparent 284px),
+      radial-gradient(circle at 50% 50%, transparent 520px, rgba(212, 175, 55, 0.10) 522px, transparent 524px);
+    background-size: 120px 120px, 120px 120px, 100% 100%, 100% 100%;
+  }
+  .topography {
+    position: absolute; inset: 0; opacity: 0.35;
+  }
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at center, transparent 45%, rgba(0,0,0,0.88) 100%);
+    z-index: 50;
+  }
+  .film-grain {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0.05; z-index: 51;
+    background-image: repeating-radial-gradient(#fff 0 0.0001%, #000 0 0.0002%);
+    background-size: 4px 4px;
+  }
+  .light-flare {
+    position: absolute; top: -200px; left: 50%; width: 1100px; height: 600px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(235, 190, 90, 0.18) 0%, transparent 70%);
+    pointer-events: none; z-index: 5;
+  }
+  #particles { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+  
+  /* Center Content Container */
+  .stage-content {
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transform-style: preserve-3d;
+  }
+  
+  /* Premium 3D Metallic Typography */
+  .word-line {
+    font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
+    line-height: 1.05; text-align: center;
+    opacity: 0;
+    filter: drop-shadow(0 18px 25px rgba(0,0,0,0.9));
+  }
+  .gold-text {
+    background: linear-gradient(180deg, #fff3c4 0%, #e5b84b 50%, #9e731c 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .white-text {
+    background: linear-gradient(180deg, #ffffff 0%, #dce6f2 75%, #8fa3bf 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: 0 4px 0 #1a2639, 0 8px 0 #0f1724;
+  }
+  .serif-font { font-family: 'Cinzel', serif; }
+  .mono-font { font-family: 'JetBrains Mono', monospace; }
 
-def create_rich_map_bg():
-    # Generate high-res (2200x1240) vintage dark navy/teal topographic map texture for smooth camera zoom
-    BW, BH = 2200, 1240
-    y, x = np.ogrid[0:BH, 0:BW]
-    
-    # Procedural terrain contours (sin/cos interference)
-    z = (np.sin(x * 0.004) * np.cos(y * 0.004) +
-         0.5 * np.sin(x * 0.011 + y * 0.008) +
-         0.25 * np.cos(x * 0.025 - y * 0.02))
-    
-    # Dark navy & deep teal base with subtle gold contour lines
-    r = np.clip(10 + 12 * (z > 0.4), 5, 35).astype(np.uint8)
-    g = np.clip(24 + 22 * (z > 0.4) + 18 * (np.abs(z - 0.4) < 0.04), 12, 65).astype(np.uint8)
-    b = np.clip(48 + 30 * (z > 0.4) + 15 * (np.abs(z - 0.4) < 0.04), 22, 95).astype(np.uint8)
-    
-    # Add subtle film grain
-    rng = np.random.default_rng(42)
-    noise = rng.integers(-6, 7, size=(BH, BW, 1))
-    arr = np.clip(np.dstack([r, g, b]).astype(np.int16) + noise, 0, 255).astype(np.uint8)
-    
-    img = Image.fromarray(arr, "RGB")
-    draw = ImageDraw.Draw(img)
-    
-    # Nautical coordinate grid & compass circles
-    for gx in range(0, BW, 160):
-        draw.line([(gx, 0), (gx, BH)], fill=(25, 55, 85), width=2)
-    for gy in range(0, BH, 160):
-        draw.line([(0, gy), (BW, gy)], fill=(25, 55, 85), width=2)
-    
-    cx, cy = BW // 2, BH // 2
-    for rad in [280, 480, 680]:
-        draw.ellipse([(cx - rad, cy - rad), (cx + rad, cy + rad)], outline=(45, 75, 95), width=2)
+  .laser-bar {
+    height: 5px; width: 0px; margin-top: 28px;
+    background: linear-gradient(90deg, transparent, #ef4444, #fbbf24, #ef4444, transparent);
+    box-shadow: 0 0 20px #ef4444, 0 0 40px rgba(239, 68, 68, 0.6);
+    border-radius: 3px;
+  }
+
+  /* Glassmorphism Documentary Card */
+  .glass-card {
+    padding: 55px 85px;
+    background: linear-gradient(135deg, rgba(15, 30, 52, 0.78), rgba(6, 14, 28, 0.90));
+    border: 1px solid rgba(235, 195, 100, 0.35);
+    box-shadow: 0 30px 70px rgba(0,0,0,0.85), inset 0 0 30px rgba(56, 189, 248, 0.08);
+    border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* Sonar HUD */
+  .sonar-ring {
+    position: absolute; width: 620px; height: 620px; border-radius: 50%;
+    border: 2px solid rgba(45, 212, 191, 0.3);
+    box-shadow: 0 0 50px rgba(45, 212, 191, 0.1), inset 0 0 50px rgba(45, 212, 191, 0.1);
+  }
+  .sonar-sweep {
+    position: absolute; width: 620px; height: 620px; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(45, 212, 191, 0.35) 0deg, transparent 75deg);
+  }
+
+  /* Stamp */
+  .stamp-box {
+    border: 12px solid #dc2626;
+    padding: 22px 55px;
+    color: #ef4444;
+    font-size: 115px; font-weight: 900; letter-spacing: 0.1em;
+    text-shadow: 0 0 25px rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 35px rgba(220, 38, 38, 0.4), inset 0 0 25px rgba(220, 38, 38, 0.3);
+    background: rgba(127, 29, 29, 0.18);
+    border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="world-stage" id="worldStage">
+    <div class="nautical-grid"></div>
+    <svg class="topography" viewBox="0 0 1920 1080" fill="none">
+      <path d="M-100,250 Q400,100 850,320 T1950,200" stroke="#d4af37" stroke-width="1.5"/>
+      <path d="M-100,450 Q500,620 980,410 T1980,520" stroke="#38bdf8" stroke-width="1.5"/>
+      <path d="M-100,720 Q450,580 1050,790 T2020,680" stroke="#d4af37" stroke-width="1.5"/>
+      <path d="M300,-50 Q480,450 280,1120" stroke="#38bdf8" stroke-width="1"/>
+      <path d="M1450,-50 Q1280,520 1520,1120" stroke="#d4af37" stroke-width="1"/>
+    </svg>
+  </div>
+  <div class="light-flare"></div>
+  <canvas id="particles" width="1920" height="1080"></canvas>
+  <div class="stage-content" id="stageContent"></div>
+  <div class="vignette"></div>
+  <div class="film-grain"></div>
+
+<script>
+// Deterministic Gold Dust Particles
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+const pts = Array.from({length: 65}, (_, i) => ({
+  x: (i * 197) % 1920,
+  y: (i * 313) % 1080,
+  r: 1.2 + (i % 3) * 0.9,
+  vx: ((i % 5) - 2) * 0.25,
+  vy: -0.3 - (i % 4) * 0.2,
+  a: 0.25 + (i % 5) * 0.12
+}));
+
+function drawParticles(frame) {
+  ctx.clearRect(0, 0, 1920, 1080);
+  for (const p of pts) {
+    const px = (p.x + p.vx * frame + 1920) % 1920;
+    const py = (p.y + p.vy * frame + 1080) % 1080;
+    ctx.beginPath();
+    ctx.arc(px, py, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(245, 208, 110, ${p.a})`;
+    ctx.fill();
+  }
+}
+
+function easeOutBack(t) {
+  t = Math.max(0, Math.min(1, t));
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+function easeOutCubic(t) {
+  t = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - t, 3);
+}
+
+let SCENE = null;
+window.setupScene = function(cfg) {
+  SCENE = cfg;
+  const root = document.getElementById('stageContent');
+  root.innerHTML = '';
+
+  if (cfg.type === 'title_drop') {
+    const wrap = cfg.card ? document.createElement('div') : root;
+    if (cfg.card) { wrap.className = 'glass-card'; root.appendChild(wrap); }
+    cfg.lines.forEach((l, idx) => {
+      const el = document.createElement('div');
+      el.className = `word-line ${l.gold ? 'gold-text' : 'white-text'} ${l.serif ? 'serif-font' : ''}`;
+      el.style.fontSize = l.size + 'px';
+      el.style.marginTop = (l.mt || 0) + 'px';
+      el.id = 'line_' + idx;
+      el.textContent = l.text;
+      wrap.appendChild(el);
+    });
+    const bar = document.createElement('div');
+    bar.className = 'laser-bar';
+    bar.id = 'laserBar';
+    wrap.appendChild(bar);
+  }
+  else if (cfg.type === 'sonar') {
+    root.innerHTML = `
+      <div class="sonar-ring"></div>
+      <div class="sonar-sweep" id="sonarSweep"></div>
+      <div class="mono-font" style="color:#5eead4; font-size:36px; letter-spacing:0.25em; margin-bottom:10px;">MULTI-BEAM SONAR</div>
+      <div class="mono-font white-text" id="depthNum" style="font-size:155px; font-weight:800;">0 m</div>
+      <div class="mono-font" style="color:#94a3b8; font-size:28px; letter-spacing:0.15em; margin-top:12px;">CORAL SEA FLOOR // NO LANDMASS</div>
+    `;
+  }
+  else if (cfg.type === 'coords') {
+    root.innerHTML = `
+      <div class="glass-card">
+        <div class="mono-font" style="color:#ef4444; font-size:32px; letter-spacing:0.25em; margin-bottom:18px;">TARGET COORDINATES LOCKED</div>
+        <div class="mono-font gold-text" id="coordTxt" style="font-size:96px; font-weight:800;"></div>
+        <div class="laser-bar" id="laserBar" style="width:650px;"></div>
+      </div>
+    `;
+  }
+  else if (cfg.type === 'stamp') {
+    root.innerHTML = `
+      <div class="glass-card" style="padding:70px 110px;">
+        <div class="serif-font white-text" style="font-size:64px; margin-bottom:25px;">PHANTOM ISLAND ARCHIVE</div>
+        <div class="stamp-box" id="stampBox" style="opacity:0;">UN-DISCOVERED</div>
+      </div>
+    `;
+  }
+  else if (cfg.type === 'timeline') {
+    root.innerHTML = `
+      <div class="serif-font gold-text" style="font-size:52px; letter-spacing:0.18em; margin-bottom:90px;">CARTOGRAPHIC PROPAGATION</div>
+      <div style="position:relative; width:1300px; height:180px;">
+        <div id="tLine" style="position:absolute; top:70px; left:0; height:6px; width:0px; background:linear-gradient(90deg, #ef4444, #fbbf24); box-shadow:0 0 20px #fbbf24;"></div>
+        <div id="m0" style="position:absolute; left:80px; top:0; text-align:center; opacity:0;">
+          <div class="white-text" style="font-size:64px; font-weight:900;">1876</div>
+          <div style="width:26px; height:26px; background:#ef4444; border:4px solid #fff; border-radius:50%; margin:12px auto;"></div>
+          <div style="color:#cbd5e1; font-size:26px;">VELOCITY SIGHTING</div>
+        </div>
+        <div id="m1" style="position:absolute; left:560px; top:0; text-align:center; opacity:0;">
+          <div class="white-text" style="font-size:64px; font-weight:900;">1900</div>
+          <div style="width:26px; height:26px; background:#ef4444; border:4px solid #fff; border-radius:50%; margin:12px auto;"></div>
+          <div style="color:#cbd5e1; font-size:26px;">COPIED TO CHARTS</div>
+        </div>
+        <div id="m2" style="position:absolute; left:1040px; top:0; text-align:center; opacity:0;">
+          <div class="gold-text" style="font-size:64px; font-weight:900;">1908</div>
+          <div style="width:26px; height:26px; background:#fbbf24; border:4px solid #fff; border-radius:50%; margin:12px auto;"></div>
+          <div style="color:#fde68a; font-size:26px;">ADMIRALTY CHART</div>
+        </div>
+      </div>
+    `;
+  }
+};
+
+window.renderFrame = function(frame, totalFrames) {
+  const t = frame / 60.0;
+  const progTotal = frame / totalFrames;
+  drawParticles(frame);
+
+  // 3D Camera Drift & Slow Zoom
+  const scale = 1.0 + 0.09 * progTotal;
+  const rotY = Math.sin(progTotal * Math.PI) * 1.8;
+  document.getElementById('worldStage').style.transform = `scale(${scale}) rotateY(${rotY}deg)`;
+
+  if (SCENE.type === 'title_drop') {
+    SCENE.lines.forEach((l, idx) => {
+      const start = 0.2 + idx * 0.26;
+      const p = (t - start) / 0.36;
+      const el = document.getElementById('line_' + idx);
+      if (p <= 0) { el.style.opacity = 0; return; }
+      const ease = easeOutBack(p);
+      el.style.opacity = Math.min(1, p * 2.2);
+      const yOff = (1 - ease) * -130;
+      const zOff = (1 - ease) * 180;
+      el.style.transform = `translate3d(0, ${yOff}px, ${zOff}px)`;
+    });
+    const barStart = 0.2 + SCENE.lines.length * 0.26;
+    const bp = easeOutCubic((t - barStart) / 0.45);
+    document.getElementById('laserBar').style.width = (680 * bp) + 'px';
+  }
+  else if (SCENE.type === 'sonar') {
+    document.getElementById('sonarSweep').style.transform = `rotate(${t * 140}deg)`;
+    const dp = easeOutCubic(t / 2.8);
+    const val = Math.round(1400 * dp);
+    document.getElementById('depthNum').textContent = val.toLocaleString() + ' m';
+  }
+  else if (SCENE.type === 'coords') {
+    const full = "19°15' S, 159°55' E";
+    const count = Math.floor(full.length * Math.min(1, t / 2.1));
+    const cursor = (Math.floor(frame / 15) % 2 === 0 && count < full.length) ? '_' : '';
+    document.getElementById('coordTxt').textContent = full.slice(0, count) + cursor;
+  }
+  else if (SCENE.type === 'stamp') {
+    const p = (t - 0.4) / 0.25;
+    const box = document.getElementById('stampBox');
+    if (p > 0) {
+      const s = Math.max(1.0, 2.6 - 1.6 * easeOutCubic(p));
+      box.style.opacity = Math.min(1, p * 2.5);
+      box.style.transform = `scale(${s}) rotate(-7deg)`;
+    }
+  }
+  else if (SCENE.type === 'timeline') {
+    const lp = easeOutCubic(t / 3.0);
+    document.getElementById('tLine').style.width = (1300 * lp) + 'px';
+    [0.2, 1.2, 2.2].forEach((st, idx) => {
+      const mp = easeOutBack((t - st) / 0.4);
+      const el = document.getElementById('m' + idx);
+      if (mp > 0) {
+        el.style.opacity = Math.min(1, (t - st) * 3);
+        el.style.transform = `translateY(${(1 - mp) * 40}px)`;
+      }
+    });
+  }
+};
+</script>
+</body>
+</html>
+"""
+
+with open("template.html", "w", encoding="utf-8") as f:
+    f.write(HTML_TEMPLATE)
+
+SCENES = [
+    ("shot_05_title", 4.5, {
+        "type": "title_drop", "card": False,
+        "lines": [
+            {"text": "THE", "size": 65, "gold": True, "serif": True},
+            {"text": "ISLAND", "size": 140, "gold": False, "mt": 4},
+            {"text": "THAT", "size": 58, "gold": True, "serif": True, "mt": 8},
+            {"text": "NEVER", "size": 140, "gold": False, "mt": 4},
+            {"text": "EXISTED", "size": 140, "gold": False, "mt": 4}
+        ]
+    }),
+    ("shot_11_label", 4.5, {
+        "type": "title_drop", "card": True,
+        "lines": [
+            {"text": "1876 LOGBOOK ENTRY", "size": 36, "gold": True},
+            {"text": "Sandy Island", "size": 115, "gold": False, "serif": True, "mt": 14}
+        ]
+    }),
+    ("shot_14_timeline", 5.0, {"type": "timeline"}),
+    ("shot_18_ed", 4.2, {
+        "type": "title_drop", "card": True,
+        "lines": [
+            {"text": "E.D.", "size": 165, "gold": True, "serif": True},
+            {"text": "EXISTENCE DOUBTFUL", "size": 56, "gold": False, "mt": 10}
+        ]
+    }),
+    ("shot_29_sonar", 4.5, {"type": "sonar"}),
+    ("shot_30_coords", 4.0, {"type": "coords"}),
+    ("shot_32_google", 4.2, {
+        "type": "title_drop", "card": True,
+        "lines": [
+            {"text": "NOVEMBER 26, 2012", "size": 48, "gold": True},
+            {"text": "GOOGLE CORRECTS ITS MAP", "size": 68, "gold": False, "mt": 14}
+        ]
+    }),
+    ("shot_33_natgeo", 4.2, {
+        "type": "title_drop", "card": True,
+        "lines": [
+            {"text": "NOVEMBER 29, 2012", "size": 48, "gold": True},
+            {"text": "NATIONAL GEOGRAPHIC REMOVES IT", "size": 60, "gold": False, "mt": 14}
+        ]
+    }),
+    ("shot_40_stamp", 3.5, {"type": "stamp"}),
+    ("shot_46_claim", 4.2, {
+        "type": "title_drop", "card": False,
+        "lines": [
+            {"text": "A MAP", "size": 115, "gold": False},
+            {"text": "IS A CLAIM.", "size": 135, "gold": True, "mt": 10}
+        ]
+    }),
+    ("shot_47_outro", 5.5, {
+        "type": "title_drop", "card": True,
+        "lines": [
+            {"text": "BLANK SPOT MAP", "size": 105, "gold": True, "serif": True},
+            {"text": "SUBSCRIBE FOR THE NEXT PLACE THE WORLD GOT WRONG", "size": 36, "gold": False, "mt": 22}
+        ]
+    })
+]
+
+html_path = "file://" + os.path.abspath("template.html")
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader"])
+    page = browser.new_page(viewport={"width": W, "height": H}, device_scale_factor=1)
+    page.goto(html_path, wait_until="networkidle")
+    page.wait_for_timeout(1000)
+
+    for name, dur, cfg in SCENES:
+        total_frames = int(dur * FPS)
+        out_path = f"output_clips/{name}.mp4"
+        page.evaluate(f"window.setupScene({json.dumps(cfg)})")
         
-    return img
+        cmd = [
+            "ffmpeg", "-y", "-f", "image2pipe", "-vcodec", "png",
+            "-r", str(FPS), "-i", "-",
+            "-c:v", "libx264", "-crf", "16", "-preset", "medium", "-pix_fmt", "yuv420p", out_path
+        ]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+        for f in range(total_frames):
+            page.evaluate(f"window.renderFrame({f}, {total_frames})")
+            png_bytes = page.screenshot(type="png")
+            proc.stdin.write(png_bytes)
+        proc.stdin.close()
+        proc.wait()
+        print(f"Premium Rendered: {out_path}")
 
-MASTER_BG = create_rich_map_bg()
-
-def get_zoomed_bg(t, duration, zoom_amount=0.08):
-    # Smooth Ken Burns zoom-in on the background map
-    prog = t / max(duration, 0.1)
-    scale = 1.0 + zoom_amount * prog
-    cw, ch = int(W / scale), int(H / scale)
-    bw, bh = MASTER_BG.size
-    left = (bw - cw) // 2
-    top = (bh - ch) // 2
-    cropped = MASTER_BG.crop((left, top, left + cw, top + ch)).resize((W, H), Image.Resampling.BILINEAR)
-    
-    # Apply dark cinematic vignette
-    y, x = np.ogrid[0:H, 0:W]
-    dist = np.sqrt(((x - W/2)/(W*0.58))**2 + ((y - H/2)/(H*0.58))**2)
-    vig = np.clip(1.15 - 0.65 * (dist ** 1.6), 0.35, 1.0)[:, :, None]
-    arr = (np.array(cropped, dtype=np.float32) * vig).astype(np.uint8)
-    return Image.fromarray(arr, "RGB").convert("RGBA")
-
-def render_video(name, duration_sec, draw_frame_fn):
-    total_frames = int(duration_sec * FPS)
-    out_path = f"output_clips/{name}.mp4"
-    cmd = [
-        "ffmpeg", "-y", "-f", "rawvideo", "-vcodec", "rawvideo",
-        "-s", f"{W}x{H}", "-pix_fmt", "rgb24", "-r", str(FPS),
-        "-i", "-", "-c:v", "libx264", "-crf", "16", "-preset", "medium", "-pix_fmt", "yuv420p", out_path
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    for f in range(total_frames):
-        frame = draw_frame_fn(f, total_frames)
-        proc.stdin.write(frame.tobytes())
-    proc.stdin.close()
-    proc.wait()
-    print(f"Rendered: {out_path}")
-
-def ease_out_back(t):
-    t = np.clip(t, 0, 1)
-    c1 = 1.70158
-    c3 = c1 + 1
-    return 1 + c3 * pow(t - 1, 3) + c1 * pow(t - 1, 2)
-
-def ease_out_cubic(t):
-    t = np.clip(t, 0, 1)
-    return 1 - pow(1 - t, 3)
-
-def draw_text_with_glow(overlay, pos, text, font, fill_col, alpha):
-    x, y = pos
-    # Soft dark drop shadow / backing for TV readability
-    shadow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow_layer)
-    sdraw.text((x + 8, y + 10), text, font=font, fill=(0, 0, 0, int(alpha * 0.85)))
-    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(6))
-    overlay.alpha_composite(shadow_layer)
-    
-    draw = ImageDraw.Draw(overlay)
-    draw.text((x, y), text, font=font, fill=(*fill_col, alpha))
-
-def make_cinematic_title(name, lines, duration=4.5, accent_line=True):
-    def draw_fn(f, total):
-        t = f / FPS
-        bg = get_zoomed_bg(t, duration)
-        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-
-        for idx, (txt, size, col, target_y, use_serif) in enumerate(lines):
-            start_t = 0.25 + idx * 0.28
-            raw_p = (t - start_t) / 0.38
-            if raw_p <= 0:
-                continue
-            prog = ease_out_back(raw_p)
-            alpha = int(255 * ease_out_cubic(raw_p * 1.5))
-            font = ImageFont.truetype(FONT_SERIF if use_serif else FONT_BOLD, size)
-            bbox = draw.textbbox((0, 0), txt, font=font)
-            tw = bbox[2] - bbox[0]
-            x = (W - tw) // 2
-            y = int(target_y - (1 - prog) * 160)
-            draw_text_with_glow(overlay, (x, y), txt, font, col, alpha)
-
-        if accent_line:
-            line_start = 0.25 + len(lines) * 0.28
-            l_prog = ease_out_cubic((t - line_start) / 0.4)
-            if l_prog > 0:
-                lw = int(560 * l_prog)
-                ly = lines[-1][3] + lines[-1][1] + 28
-                draw.rectangle([(W//2 - lw//2, ly), (W//2 + lw//2, ly + 6)], fill=(215, 50, 50, 255))
-
-        return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-    render_video(name, duration, draw_fn)
-
-# --- 1. Shot 5: Main Title Card ---
-make_cinematic_title("shot_05_title", [
-    ("THE", 68, (235, 195, 100), 210, False),
-    ("ISLAND", 130, (255, 248, 230), 300, False),
-    ("THAT", 62, (235, 195, 100), 455, False),
-    ("NEVER", 130, (255, 248, 230), 540, False),
-    ("EXISTED", 130, (255, 248, 230), 690, False),
-], duration=4.5)
-
-# --- 2. Shot 11: "Sandy Island" Handwritten-style Serif Reveal ---
-def draw_sandy_label(f, total):
-    t = f / FPS
-    bg = get_zoomed_bg(t, 4.5, 0.12)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    # Draw small phantom island outline
-    pts = [(860, 480), (920, 440), (1020, 450), (1060, 510), (990, 560), (890, 540)]
-    draw.polygon(pts, fill=(35, 55, 65, 200), outline=(235, 195, 100, 240))
-    
-    # Reveal label left-to-right
-    prog = ease_out_cubic((t - 0.5) / 1.5)
-    if prog > 0:
-        font = ImageFont.truetype(FONT_SERIF, 76)
-        txt = "Sandy Island"
-        draw_text_with_glow(overlay, (740, 600), txt, font, (255, 245, 220), int(255 * prog))
-    return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-
-render_video("shot_11_label", 4.5, draw_sandy_label)
-
-# --- 3. Shot 14: Timeline 1876 -> 1900 -> 1908 ---
-def draw_timeline(f, total):
-    t = f / FPS
-    bg = get_zoomed_bg(t, 5.0)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    prog = ease_out_cubic(t / 3.2)
-    line_end = int(320 + 1280 * prog)
-    draw.line([(320, 540), (line_end, 540)], fill=(235, 195, 100, 255), width=8)
-    
-    milestones = [(420, "1876", 0.3), (960, "1900", 1.3), (1500, "1908", 2.3)]
-    font_yr = ImageFont.truetype(FONT_BOLD, 72)
-    for mx, yr, st in milestones:
-        mp = ease_out_back((t - st) / 0.4)
-        if mp > 0:
-            r = int(22 * mp)
-            draw.ellipse([(mx - r, 540 - r), (mx + r, 540 + r)], fill=(215, 50, 50, 255), outline=(255, 255, 255, 255), width=4)
-            draw_text_with_glow(overlay, (mx - 95, 420), yr, font_yr, (255, 255, 255), int(255 * ease_out_cubic((t - st)/0.3)))
-    return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-
-render_video("shot_14_timeline", 5.0, draw_timeline)
-
-# --- 4. Shot 18: E.D. Existence Doubtful ---
-make_cinematic_title("shot_18_ed", [
-    ("E.D.", 170, (235, 195, 100), 340, True),
-    ("EXISTENCE DOUBTFUL", 68, (255, 255, 255), 550, False),
-], duration=4.0)
-
-# --- 5. Shot 29: Sonar Depth 1,400 m ---
-def draw_sonar(f, total):
-    t = f / FPS
-    bg = get_zoomed_bg(t, 4.5, 0.05)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    # Radar circle & sweep line
-    cx, cy = W // 2, H // 2
-    draw.ellipse([(cx - 380, cy - 380), (cx + 380, cy + 380)], outline=(40, 200, 175, 140), width=4)
-    prog = ease_out_cubic(t / 2.8)
-    depth = int(1400 * prog)
-    
-    bar_y = int(180 + 720 * ((t * 0.6) % 1.0))
-    draw.line([(240, bar_y), (W - 240, bar_y)], fill=(40, 220, 190, 180), width=4)
-    
-    font_lbl = ImageFont.truetype(FONT_MONO, 48)
-    font_num = ImageFont.truetype(FONT_MONO, 145)
-    draw_text_with_glow(overlay, (W//2 - 190, 340), "SONAR DEPTH", font_lbl, (90, 230, 205), 255)
-    txt = f"{depth:,} m"
-    bbox = draw.textbbox((0, 0), txt, font=font_num)
-    draw_text_with_glow(overlay, ((W - (bbox[2]-bbox[0]))//2, 430), txt, font_num, (255, 255, 255), 255)
-    return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-
-render_video("shot_29_sonar", 4.5, draw_sonar)
-
-# --- 6. Shot 30: Coordinates Typewriter ---
-def draw_coords(f, total):
-    t = f / FPS
-    bg = get_zoomed_bg(t, 4.0)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    # Crosshair
-    cx, cy = W // 2, H // 2
-    draw.line([(cx - 120, cy), (cx + 120, cy)], fill=(215, 50, 50, 180), width=3)
-    draw.line([(cx, cy - 120), (cx, cy + 120)], fill=(215, 50, 50, 180), width=3)
-    
-    full_txt = "19°15' S, 159°55' E"
-    chars = int(len(full_txt) * np.clip(t / 2.0, 0, 1))
-    shown = full_txt[:chars] + ("|" if (f // 15) % 2 == 0 and chars < len(full_txt) else "")
-    font = ImageFont.truetype(FONT_MONO, 92)
-    bbox = draw.textbbox((0, 0), full_txt, font=font)
-    x = (W - (bbox[2] - bbox[0])) // 2
-    draw_text_with_glow(overlay, (x, 480), shown, font, (235, 195, 100), 255)
-    return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-
-render_video("shot_30_coords", 4.0, draw_coords)
-
-# --- 7. Shot 32 & 33: News Cards ---
-make_cinematic_title("shot_32_google", [
-    ("NOVEMBER 26, 2012", 62, (235, 195, 100), 370, False),
-    ("GOOGLE CORRECTS ITS MAP", 84, (255, 255, 255), 465, False),
-], duration=4.0)
-
-make_cinematic_title("shot_33_natgeo", [
-    ("NOVEMBER 29, 2012", 62, (235, 195, 100), 370, False),
-    ("NATIONAL GEOGRAPHIC REMOVES IT", 74, (255, 255, 255), 465, False),
-], duration=4.0)
-
-# --- 8. Shot 40: Red UN-DISCOVERED Stamp Slam ---
-def draw_stamp(f, total):
-    t = f / FPS
-    bg = get_zoomed_bg(t, 3.5)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    
-    raw_p = (t - 0.35) / 0.25
-    if raw_p > 0:
-        prog = ease_out_back(raw_p)
-        scale = max(1.0, 2.3 - 1.3 * ease_out_cubic(raw_p))
-        size = int(115 * scale)
-        font = ImageFont.truetype(FONT_BOLD, size)
-        txt = "UN-DISCOVERED"
-        bbox = draw.textbbox((0, 0), txt, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        x, y = (W - tw) // 2, (H - th) // 2
-        alpha = int(255 * ease_out_cubic(raw_p * 2))
-        
-        stamp_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        sdraw = ImageDraw.Draw(stamp_img)
-        sdraw.rectangle([(x - 35, y - 22), (x + tw + 35, y + th + 28)], outline=(225, 45, 45, alpha), width=12)
-        sdraw.text((x, y), txt, font=font, fill=(225, 45, 45, alpha))
-        stamp_img = stamp_img.rotate(-6, resample=Image.Resampling.BICUBIC)
-        overlay.alpha_composite(stamp_img)
-        
-    return np.array(Image.alpha_composite(bg, overlay).convert("RGB"))
-
-render_video("shot_40_stamp", 3.5, draw_stamp)
-
-# --- 9. Shot 46 & 47: Thesis & Outro ---
-make_cinematic_title("shot_46_claim", [
-    ("A MAP", 115, (255, 255, 255), 350, False),
-    ("IS A CLAIM.", 130, (235, 195, 100), 495, False),
-], duration=4.0)
-
-make_cinematic_title("shot_47_outro", [
-    ("BLANK SPOT MAP", 118, (235, 195, 100), 360, False),
-    ("SUBSCRIBE FOR THE NEXT PLACE THE WORLD GOT WRONG", 46, (255, 255, 255), 520, False),
-], duration=5.5)
+    browser.close()
