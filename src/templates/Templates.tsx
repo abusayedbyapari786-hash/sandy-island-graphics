@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { COLORS, FONTS, SAFE_AREA, EASINGS } from '../designSystem';
 
+const MAP_CHART_IMG = "shot 15      lucid-origin_1908_British_Admiralty_nautical_chart_coral_sea_faded_paper_red_ink_coordinates_-0.jpg";
+const OPEN_OCEAN_IMG = "shot 22      lucid-origin_Image_Empty_open_ocean_from_above_calm_deep_blue_no_land_cinematic_documentary_s-0.jpg";
+
 // Real Image + Fallback Rich Nautical Texture Stage with 3D Camera Motion
-const CinematicStage: React.FC<{ bgImage?: string; children: React.ReactNode }> = ({ bgImage = 'bg/map_dark.jpg', children }) => {
+const CinematicStage: React.FC<{ bgImage?: string; children: React.ReactNode }> = ({ bgImage = MAP_CHART_IMG, children }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const [imgError, setImgError] = useState(false);
 
-  // Smooth Hollywood Camera Push-in & Subtle Tilt
+  // Smooth Hollywood Camera Push-in & Subtle Pan
   const scale = interpolate(frame, [0, durationInFrames], [1.02, 1.14]);
   const panX = interpolate(frame, [0, durationInFrames], [0, -18]);
 
@@ -34,7 +37,7 @@ const CinematicStage: React.FC<{ bgImage?: string; children: React.ReactNode }> 
             height: 'calc(100% + 80px)',
             objectFit: 'cover',
             transform: `scale(${scale}) translateX(${panX}px)`,
-            filter: 'brightness(0.48) contrast(1.18) saturate(1.1)',
+            filter: 'brightness(0.46) contrast(1.2) saturate(1.1)',
           }}
         />
       ) : (
@@ -53,7 +56,7 @@ const CinematicStage: React.FC<{ bgImage?: string; children: React.ReactNode }> 
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'radial-gradient(circle at center, rgba(10,22,40,0.15) 0%, rgba(2,6,14,0.85) 100%)',
+          background: 'radial-gradient(circle at center, rgba(10,22,40,0.12) 0%, rgba(2,6,14,0.88) 100%)',
           pointerEvents: 'none',
         }}
       />
@@ -95,7 +98,7 @@ export const TitleCardTemplate: React.FC<{ words: string[]; subtitle: string }> 
   });
 
   return (
-    <CinematicStage bgImage="bg/map_dark.jpg">
+    <CinematicStage bgImage={MAP_CHART_IMG}>
       <div
         style={{
           opacity,
@@ -152,7 +155,7 @@ export const TitleCardTemplate: React.FC<{ words: string[]; subtitle: string }> 
           style={{
             marginTop: 26,
             padding: '12px 32px',
-            backgroundColor: 'rgba(6, 14, 26, 0.82)',
+            backgroundColor: 'rgba(6, 14, 26, 0.84)',
             border: '1px solid rgba(243, 198, 95, 0.35)',
             borderRadius: 4,
             opacity: subOpacity,
@@ -185,7 +188,7 @@ export const SonarTemplate: React.FC<{ targetDepth: number; coordinates: string 
   const ringOpacity = interpolate((frame % 75) / 75, [0, 0.8, 1], [0.8, 0.25, 0]);
 
   return (
-    <CinematicStage bgImage="bg/sonar.jpg">
+    <CinematicStage bgImage={OPEN_OCEAN_IMG}>
       <div
         style={{
           position: 'absolute',
@@ -240,7 +243,7 @@ export const TypewriterCoordsTemplate: React.FC<{ coordinates: string; label: st
   const cursorVisible = Math.floor(frame / 15) % 2 === 0;
 
   return (
-    <CinematicStage bgImage="bg/sonar.jpg">
+    <CinematicStage bgImage={OPEN_OCEAN_IMG}>
       <div
         style={{
           zIndex: 10,
