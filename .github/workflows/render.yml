@@ -25,9 +25,9 @@ jobs:
         run: |
           mkdir -p out
           npx remotion bundle src/index.ts --out-dir /tmp/remotion-build --public-dir=.
-          for id in Shot05 Shot11 Shot13 Shot14 Shot16 Shot18 Shot19 Shot23 Shot24 Shot29 Shot30 Shot32 Shot33 Shot36 Shot39 Shot42 Shot44 Shot45 Shot46 Shot47; do
+          for id in Shot05 Shot11 Shot12 Shot13 Shot14 Shot15 Shot16 Shot18 Shot19 Shot22 Shot23 Shot24 Shot25 Shot27 Shot29 Shot30 Shot31 Shot32 Shot33 Shot35 Shot36 Shot37 Shot38 Shot39 Shot42 Shot44 Shot45 Shot46 Shot47; do
             npx remotion render /tmp/remotion-build $id out/${id}.mp4 --concurrency=4 --gl=angle
-          done
+          done 
           for ov in Shot40 BadgeRecreation LT-Velocity LT-Surveyor LT-BBC LT-Seton LT-Dougherty LT-Agloe; do
             npx remotion render /tmp/remotion-build $ov out/${ov}_transparent.webm --codec=vp9 --image-format=png --pixel-format=yuva420p --concurrency=4 --gl=angle
           done
