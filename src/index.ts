@@ -1,9 +1,9 @@
-import { ImageClipTemplate } from './templates/ImageClipTemplate';
 import { registerRoot, Composition } from 'remotion';
 import React from 'react';
 import shots from './data/shots.json';
 import { TitleCardTemplate, SonarTemplate, TypewriterCoordsTemplate, StampOverlayTemplate } from './templates/Templates';
 import { InkWriteTemplate, MapEngineTemplate, DataPropagationTemplate, DateCardTemplate, IllustrationTemplate, LowerThirdTemplate } from './templates/MapAndExtraTemplates';
+import { ImageClipTemplate } from './templates/ImageClipTemplate';
 
 export const RemotionRoot: React.FC = () => {
   return React.createElement(
@@ -44,14 +44,15 @@ export const RemotionRoot: React.FC = () => {
     React.createElement(Composition, { id: 'Shot16', component: IllustrationTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { variant: 'size' } }),
     React.createElement(Composition, { id: 'Shot44', component: IllustrationTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { variant: 'agloe' } }),
 
-    // Template H: Transparent Lower Thirds & Recreation Badge (Using hyphens instead of underscores)
+    // Template H: Transparent Lower Thirds & Recreation Badge
     React.createElement(Composition, { id: 'BadgeRecreation', component: LowerThirdTemplate, durationInFrames: 360, fps: 60, width: 1920, height: 1080, defaultProps: { text: 'RECREATION', isBadge: true } }),
     React.createElement(Composition, { id: 'LT-Velocity', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: '1876: Whaling ship Velocity' } }),
     React.createElement(Composition, { id: 'LT-Surveyor', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: 'RV Southern Surveyor, October to November 2012' } }),
     React.createElement(Composition, { id: 'LT-BBC', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: 'Source: BBC News, November 22, 2012' } }),
     React.createElement(Composition, { id: 'LT-Seton', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: 'Seton et al., Eos (AGU), April 9, 2013' } }),
     React.createElement(Composition, { id: 'LT-Dougherty', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: 'Dougherty Island, reported 1841' } }),
-    React.createElement(Composition, { id: 'LT-Agloe', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: "Agloe, New York: a map's copyright trap" } })
+    React.createElement(Composition, { id: 'LT-Agloe', component: LowerThirdTemplate, durationInFrames: 240, fps: 60, width: 1920, height: 1080, defaultProps: { text: "Agloe, New York: a map's copyright trap" } }),
+
     // Cinematic 5-6s Image-to-Video Clips (Shots 12, 15, 22, 25, 27, 31, 35, 37, 38)
     React.createElement(Composition, { id: 'Shot12', component: ImageClipTemplate, durationInFrames: 330, fps: 60, width: 1920, height: 1080, defaultProps: { imageFile: 'shot 12  lucid-origin_Image_Victorian_mapmaker’s_desk_rolled_charts_brass_compass_lamplight_top-down-0.jpg', motionType: 'zoomIn' } }),
     React.createElement(Composition, { id: 'Shot15', component: ImageClipTemplate, durationInFrames: 330, fps: 60, width: 1920, height: 1080, defaultProps: { imageFile: 'shot 15      lucid-origin_1908_British_Admiralty_nautical_chart_coral_sea_faded_paper_red_ink_coordinates_-0.jpg', motionType: 'panRight' } }),
