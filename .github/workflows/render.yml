@@ -13,8 +13,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu-core
-          pip install pillow numpy
+          sudo apt-get install -y ffmpeg
+          pip install playwright
+          playwright install chromium
 
       - name: Render all 60fps MP4 clips
         run: python render_clips.py
@@ -22,5 +23,5 @@ jobs:
       - name: Upload rendered clips
         uses: actions/upload-artifact@v4
         with:
-          name: sandy-island-60fps-clips
+          name: sandy-island-premium-60fps
           path: output_clips/*.mp4
