@@ -1,0 +1,26 @@
+name: Render Documentary Graphics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install pillow numpy
+
+      - name: Render all 60fps MP4 clips
+        run: python render_clips.py
+
+      - name: Upload rendered clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandy-island-60fps-clips
+          path: output_clips/*.mp4
